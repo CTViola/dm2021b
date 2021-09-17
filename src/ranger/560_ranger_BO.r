@@ -4,7 +4,7 @@
 
 #limpio la memoria
 rm( list=ls() )  #remove all objects
-gc()             #garbage collection
+gc()             #Gay
 
 require("data.table")
 require("rlist")
