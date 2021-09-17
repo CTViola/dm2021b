@@ -22,12 +22,13 @@ require("mlrMBO")
 setwd( "~/buckets/b1/crudo/"  )
 
 
-kexperimento  <- NA   #NA si se corre la primera vez, un valor concreto si es para continuar procesando
+kexperimento  <- NA   #NA si se corre la primera vez, 
+                      #un valor concreto si es para continuar procesando
 
 kscript           <- "360_rpart_BO"
 karch_generacion  <- "./datasetsOri/paquete_premium_202011.csv"
 karch_aplicacion  <- "./datasetsOri/paquete_premium_202101.csv"
-kBO_iter    <-  150   #cantidad de iteraciones de la Optimizacion Bayesiana
+kBO_iter    <-  160   #cantidad de iteraciones de la Optimizacion Bayesiana
 
 hs  <- makeParamSet(
           makeNumericParam("cp"       , lower= -1   , upper=    0.1),
@@ -37,7 +38,7 @@ hs  <- makeParamSet(
           forbidden = quote( minbucket > 0.5*minsplit ) )
 
 
-ksemilla_azar  <- 102191  #Aqui poner la propia semilla
+ksemilla_azar  <- 100057  #Aqui poner la propia semilla
 #------------------------------------------------------------------------------
 #Funcion que lleva el registro de los experimentos
 
@@ -96,7 +97,7 @@ particionar  <- function( data, division, agrupa="", campo="fold", start=1, seed
 ArbolSimple  <- function( fold_test, data, param )
 {
   #genero el modelo
-  modelo  <- rpart("clase_ternaria ~ .", 
+  modelo  <- rpart("clase_binaria ~ . -clase_ternaria ", 
                    data= data[ fold != fold_test, ],
                    xval= 0,
                    control= param )
@@ -104,9 +105,9 @@ ArbolSimple  <- function( fold_test, data, param )
   #aplico el modelo a los datos de testing, fold==2
   prediccion  <- predict( modelo, data[ fold==fold_test, ], type = "prob")
 
-  prob_baja2  <- prediccion[, "BAJA+2"]
+  prob_Pos  <- prediccion[, "Pos"]
 
-  ganancia_testing  <- sum(  data[ fold==fold_test ][ prob_baja2 >0.025,  ifelse( clase_ternaria=="BAJA+2", 48750, -1250 ) ] )
+  ganancia_testing  <- sum(  data[ fold==fold_test ][ prob_Pos >0.035,  ifelse( clase_binaria=="Pos", 48750, -1250 ) ] )
 
   return( ganancia_testing )
 }
@@ -137,14 +138,18 @@ EstimarGanancia  <- function( x )
    GLOBAL_iteracion  <<-  GLOBAL_iteracion + 1
 
    xval_folds  <- 5
-   ganancia  <-  ArbolesCrossValidation( dataset, param=x, qfolds= xval_folds, pagrupa="clase_ternaria", semilla=ksemilla_azar )
+   ganancia  <-  ArbolesCrossValidation( dataset, 
+                                         param=x, 
+                                         qfolds= xval_folds, 
+                                         pagrupa="clase_binaria", 
+                                         semilla=ksemilla_azar )
 
    #si tengo una ganancia superadora, genero el archivo para Kaggle
    if(  ganancia > GLOBAL_ganancia_max )
    {
      GLOBAL_ganancia_max <<-  ganancia  #asigno la nueva maxima ganancia
     
-     modelo  <- rpart("clase_ternaria ~ .",
+     modelo  <- rpart :: rpart ("clase_binaria ~ . -clase_ternaria",
                       data= dataset,
                       xval= 0,
                       control= x )
@@ -152,8 +157,8 @@ EstimarGanancia  <- function( x )
      #genero el vector con la prediccion, la probabilidad de ser positivo
      prediccion  <- predict( modelo, dapply)
 
-     prob_baja2  <- prediccion[, "BAJA+2"]
-     Predicted   <- ifelse( prob_baja2 > 0.025, 1, 0 )
+     prob_Pos  <- prediccion[, "Pos"]
+     Predicted   <- ifelse( prob_Pos > 0.035, 1, 0 )
 
      entrega  <-  as.data.table( list( "numero_de_cliente"=dapply$numero_de_cliente, "Predicted"=Predicted)  )
 
@@ -196,6 +201,10 @@ if( file.exists(klog) )
 
 #cargo los datasets
 dataset  <- fread(karch_generacion)   #donde entreno
+
+dataset [  , clase_binaria := 'Neg']
+dataset [ clase_ternaria == 'baja+2', clase_binaria := 'Pos']
+
 dapply  <- fread(karch_aplicacion)    #donde aplico el modelo
 
 #Aqui comienza la configuracion de la Bayesian Optimization
