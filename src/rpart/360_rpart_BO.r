@@ -19,10 +19,10 @@ require("mlrMBO")
 
 
 #defino la carpeta donde trabajo
-setwd( "~/buckets/b1/crudo/"  )
+setwd("C:/Users/Gabriel/Desktop/Posgrado en Ciencia de Datos/Data Mining")
 
 
-kexperimento  <- NA   #NA si se corre la primera vez, 
+kexperimento  <- 32   #NA si se corre la primera vez, 
                       #un valor concreto si es para continuar procesando
 
 kscript           <- "360_rpart_BO"
@@ -35,6 +35,7 @@ hs  <- makeParamSet(
           makeIntegerParam("minsplit" , lower=  1L  , upper= 8000L),  #la letra L al final significa ENTERO
           makeIntegerParam("minbucket", lower=  1L  , upper= 2000L),
           makeIntegerParam("maxdepth" , lower=  3L  , upper=   20L),
+          makeNumericParam("pcorte" , lower= 0.020 , upper= 0.060),
           forbidden = quote( minbucket > 0.5*minsplit ) )
 
 
@@ -97,7 +98,7 @@ particionar  <- function( data, division, agrupa="", campo="fold", start=1, seed
 ArbolSimple  <- function( fold_test, data, param )
 {
   #genero el modelo
-  modelo  <- rpart("clase_binaria ~ . -clase_ternaria ", 
+  modelo  <- rpart ("clase_binaria ~. -clase_ternaria", 
                    data= data[ fold != fold_test, ],
                    xval= 0,
                    control= param )
@@ -105,9 +106,10 @@ ArbolSimple  <- function( fold_test, data, param )
   #aplico el modelo a los datos de testing, fold==2
   prediccion  <- predict( modelo, data[ fold==fold_test, ], type = "prob")
 
-  prob_Pos  <- prediccion[, "Pos"]
+  prob_Pos  <- prediccion[ , "Pos"]
 
-  ganancia_testing  <- sum(  data[ fold==fold_test ][ prob_Pos >0.035,  ifelse( clase_binaria=="Pos", 48750, -1250 ) ] )
+  ganancia_testing  <- sum(  data[ fold==fold_test ][ prob_Pos >param$pcorte,  
+                                      ifelse( clase_binaria=="Pos", 48750, -1250 ) ] )
 
   return( ganancia_testing )
 }
@@ -122,7 +124,7 @@ ArbolesCrossValidation  <- function( data, param, qfolds, pagrupa, semilla )
                           seq(qfolds), # 1 2 3 4 5  
                           MoreArgs= list( data, param), 
                           SIMPLIFY= FALSE,
-                          mc.cores= 5 )   #se puede subir a 5 si posee Linux o Mac OS
+                          mc.cores= 1 )   #se puede subir a 5 si posee Linux o Mac OS
                                           #Se se usa Windows, obligatoriamente debe ser  1
 
   data[ , fold := NULL ]
@@ -149,7 +151,7 @@ EstimarGanancia  <- function( x )
    {
      GLOBAL_ganancia_max <<-  ganancia  #asigno la nueva maxima ganancia
     
-     modelo  <- rpart :: rpart ("clase_binaria ~ . -clase_ternaria",
+     modelo  <- rpart("clase_binaria ~. -clase_ternaria",
                       data= dataset,
                       xval= 0,
                       control= x )
@@ -158,9 +160,10 @@ EstimarGanancia  <- function( x )
      prediccion  <- predict( modelo, dapply)
 
      prob_Pos  <- prediccion[, "Pos"]
-     Predicted   <- ifelse( prob_Pos > 0.035, 1, 0 )
+     Predicted   <- ifelse( prob_Pos > param$pcorte, 1, 0 )
 
-     entrega  <-  as.data.table( list( "numero_de_cliente"=dapply$numero_de_cliente, "Predicted"=Predicted)  )
+     entrega  <-  as.data.table( list( "numero_de_cliente"=dapply$numero_de_cliente, 
+                                       "Predicted"=Predicted)  )
 
      #genero el archivo para Kaggle
      fwrite( entrega, 
@@ -201,9 +204,10 @@ if( file.exists(klog) )
 
 #cargo los datasets
 dataset  <- fread(karch_generacion)   #donde entreno
-
-dataset [  , clase_binaria := 'Neg']
-dataset [ clase_ternaria == 'baja+2', clase_binaria := 'Pos']
+dataset [ , mpasivos_margen := NULL]
+dataset [ , mactivos_margen := NULL]
+dataset [ , clase_binaria := 'Neg']
+dataset [  clase_ternaria == 'BAJA+2', clase_binaria := 'Pos']
 
 dapply  <- fread(karch_aplicacion)    #donde aplico el modelo
 
@@ -235,6 +239,6 @@ if(!file.exists(kbayesiana)) {
 } else  run  <- mboContinue( kbayesiana )   #retomo en caso que ya exista
 
 
-quit( save="no" )
+#quit( save="no" )
 
 
